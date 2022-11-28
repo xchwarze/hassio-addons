@@ -5,3 +5,7 @@ addons:
     repository: xchwarze/addon-autossh
     target: autossh
     image: autossh
+  transmission:
+    repository: xchwarze/addon-transmission
+    target: transmission
+    image: transmission
