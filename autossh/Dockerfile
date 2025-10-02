@@ -1,5 +1,6 @@
-# from https://github.com/hassio-addons/addon-base/releases
-ARG BUILD_FROM=ghcr.io/hassio-addons/base/amd64:11.1.2
+# example: https://github.com/hassio-addons/addon-example/blob/main/example/Dockerfile
+# base versions: https://github.com/hassio-addons/addon-base/releases
+ARG BUILD_FROM=ghcr.io/hassio-addons/base:18.1.3
 # hadolint ignore=DL3006
 FROM ${BUILD_FROM}
 
@@ -10,11 +11,12 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 COPY rootfs /
 
 # Setup base
+# https://pkgs.alpinelinux.org/packages
 RUN apk add --no-cache \
-    autossh=1.4g-r1 \
-    moreutils=0.66-r1 \
-    nano=5.9-r0 \
-    curl=7.80.0-r1
+    autossh=1.4g-r3 \
+    moreutils=0.70-r0 \
+    nano=8.4-r0 \
+    curl=8.14.1-r1
 
 # Build arguments
 ARG BUILD_ARCH

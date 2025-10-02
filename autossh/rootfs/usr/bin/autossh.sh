@@ -3,6 +3,11 @@
 # Home Assistant Community Add-on: Autossh
 # Autossh implementation logic
 # ==============================================================================
+
+# Strict mode: fail on errors/unset vars
+# with pipefail, autossh errors propagate through the pipe so the until-loop retries.
+set -euo pipefail
+
 declare SSH_KEY_PATH
 declare SSH_KEY_NAME
 declare HOSTNAME
@@ -18,7 +23,8 @@ declare GATETIME
 declare RETRY_INTERVAL
 declare -a autossh_params
 
-SSH_KEY_PATH=/data/ssh
+KNOWN_HOSTS_PATH="/etc/ssh/ssh_known_hosts"
+SSH_KEY_PATH="/data/ssh"
 SSH_KEY_NAME=$(bashio::config 'ssh_key_name')
 HOSTNAME=$(bashio::config 'hostname')
 SSH_PORT=$(bashio::config 'ssh_port')
@@ -44,7 +50,7 @@ fi
 if [ ! -f "${SSH_KEY_PATH}/${SSH_KEY_NAME}" ]; then
     bashio::log.info "Generating new private key"
     mkdir -p "${SSH_KEY_PATH}"
-    ssh-keygen -b 4096 -t ED25519 -N "" -f "${SSH_KEY_PATH}/${SSH_KEY_NAME}"  
+    ssh-keygen -t ed25519 -N "" -f "${SSH_KEY_PATH}/${SSH_KEY_NAME}"  
 fi
 
 bashio::log.info "Using existing keys from: '${SSH_KEY_PATH}'"
@@ -55,14 +61,16 @@ cat "${SSH_KEY_PATH}/${SSH_KEY_NAME}.pub"
 bashio::log.info "-----------------------------------------------------------"
 
 # add host key to global ssh config
-ssh-keyscan -p "$SSH_PORT" "$HOSTNAME" > "/etc/ssh/ssh_known_hosts"
+target="[$HOSTNAME]:${SSH_PORT}"
+ssh-keygen -R "$target" -f "$KNOWN_HOSTS_PATH" >/dev/null 2>&1 || true
+ssh-keyscan -p "$SSH_PORT" "$HOSTNAME" >> "$KNOWN_HOSTS_PATH"
 
 # autossh params
-# https://www.harding.motd.ca/autossh/
 # https://linux.die.net/man/1/autossh
+# https://linux.die.net/man/1/ssh
 autossh_params+=(-M "${MONITOR_PORT}")
 autossh_params+=(-N)
-autossh_params+=(-q)
+autossh_params+=(-T)
 autossh_params+=(-o ExitOnForwardFailure=yes)
 autossh_params+=(-o ServerAliveInterval="${SERVER_ALIVE_INTERVAL}")
 autossh_params+=(-o ServerAliveCountMax="${SERVER_ALIVE_COUNT_MAX}")
@@ -87,9 +95,16 @@ fi
 # Enable debug mode on autossh
 if bashio::debug; then
     autossh_params+=(-v)
+else
+    autossh_params+=(-q)
 fi
 
-autossh_params+=("${OTHER_SSH_OPTIONS}")
+# Extra user-provided options (split into tokens)
+if [[ -n "${OTHER_SSH_OPTIONS}" ]]; then
+    # shellcheck disable=SC2206
+    extra_opts=( ${OTHER_SSH_OPTIONS} )
+    autossh_params+=("${extra_opts[@]}")
+fi
 
 bashio::log.info "Autossh start!"
 bashio::log.debug "Executing autossh with params:"

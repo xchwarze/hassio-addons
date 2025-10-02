@@ -1,0 +1,171 @@
+[1mdiff --git a/autossh/Dockerfile b/autossh/Dockerfile[m
+[1mindex 95969c8..cbf7c9d 100644[m
+[1m--- a/autossh/Dockerfile[m
+[1m+++ b/autossh/Dockerfile[m
+[36m@@ -1,5 +1,6 @@[m
+[31m-# from https://github.com/hassio-addons/addon-base/releases[m
+[31m-ARG BUILD_FROM=ghcr.io/hassio-addons/base/amd64:11.1.2[m
+[32m+[m[32m# example: https://github.com/hassio-addons/addon-example/blob/main/example/Dockerfile[m
+[32m+[m[32m# base versions: https://github.com/hassio-addons/addon-base/releases[m
+[32m+[m[32mARG BUILD_FROM=ghcr.io/hassio-addons/base:18.1.3[m
+ # hadolint ignore=DL3006[m
+ FROM ${BUILD_FROM}[m
+ [m
+[36m@@ -10,11 +11,12 @@[m [mSHELL ["/bin/bash", "-o", "pipefail", "-c"][m
+ COPY rootfs /[m
+ [m
+ # Setup base[m
+[32m+[m[32m# https://pkgs.alpinelinux.org/packages[m
+ RUN apk add --no-cache \[m
+[31m-    autossh=1.4g-r1 \[m
+[31m-    moreutils=0.66-r1 \[m
+[31m-    nano=5.9-r0 \[m
+[31m-    curl=7.80.0-r1[m
+[32m+[m[32m    autossh=1.4g-r3 \[m
+[32m+[m[32m    moreutils=0.70-r0 \[m
+[32m+[m[32m    nano=8.4-r0 \[m
+[32m+[m[32m    curl=8.14.1-r1[m
+ [m
+ # Build arguments[m
+ ARG BUILD_ARCH[m
+[1mdiff --git a/autossh/config.yaml b/autossh/config.yaml[m
+[1mindex e21c78a..4a34962 100644[m
+[1m--- a/autossh/config.yaml[m
+[1m+++ b/autossh/config.yaml[m
+[36m@@ -1,17 +1,19 @@[m
+ ---[m
+ name: Autossh[m
+[31m-version: 1.3.0[m
+[32m+[m[32mversion: 1.4.0[m
+ slug: autossh[m
+ description: Automatically connect to a ssh server for forwarding ports[m
+ url: https://github.com/xchwarze/addon-autossh[m
+ arch:[m
+[31m-  - armv7[m
+[31m-  - armhf[m
+[31m-  - amd64[m
+   - aarch64[m
+[31m-  - i386[m
+[32m+[m[32m  - amd64[m
+[32m+[m[32m  - armv7[m
+ advanced: true[m
+ host_network: true[m
+[32m+[m[32mstartup: services[m
+[32m+[m[32mboot: auto[m
+[32m+[m[32minit: false[m
+[32m+[m[32mimage: null[m
+ map:[m
+   - share:rw[m
+ options:[m
+[36m@@ -19,10 +21,9 @@[m [moptions:[m
+   ssh_port: 22[m
+   username: autossh[m
+   remote_forwarding:[m
+[31m-    - 127.0.0.1:8123:172.17.0.1:8123[m
+[31m-  local_forwarding:[m
+[31m-    - ""[m
+[31m-  other_ssh_options: "-v"[m
+[32m+[m[32m    - 127.0.0.1:8123:127.0.0.1:8123[m
+[32m+[m[32m  local_forwarding: [][m
+[32m+[m[32m  other_ssh_options: ""[m
+   monitor_port: 0[m
+   server_alive_interval: 30[m
+   server_alive_count_max: 3[m
+[36m@@ -41,10 +42,10 @@[m [mschema:[m
+     - str[m
+   other_ssh_options: str[m
+   monitor_port: int(0,65535)[m
+[31m-  server_alive_interval: int[m
+[31m-  server_alive_count_max: int[m
+[31m-  gatetime: int[m
+[31m-  retry_interval: int[m
+[32m+[m[32m  server_alive_interval: int(0,3600)[m
+[32m+[m[32m  server_alive_count_max: int(1,100)[m
+[32m+[m[32m  gatetime: int(0,600)[m
+[32m+[m[32m  retry_interval: int(1,600)[m
+   ssh_key_name: str[m
+   use_share_folder: bool[m
+   log_level: list(trace|debug|info|notice|warning|error|fatal)[m
+[1mdiff --git a/autossh/rootfs/etc/services.d/autossh/run b/autossh/rootfs/etc/services.d/autossh/run[m
+[1mindex 32dc202..eda31e7 100644[m
+[1m--- a/autossh/rootfs/etc/services.d/autossh/run[m
+[1m+++ b/autossh/rootfs/etc/services.d/autossh/run[m
+[36m@@ -1,4 +1,5 @@[m
+ #!/usr/bin/with-contenv bashio[m
+[32m+[m[32m# shellcheck shell=bash[m
+ # ==============================================================================[m
+ # Home Assistant Community Add-on: Autossh[m
+ # Runs Autossh script[m
+[1mdiff --git a/autossh/rootfs/usr/bin/autossh.sh b/autossh/rootfs/usr/bin/autossh.sh[m
+[1mindex 61a44da..ba65a2e 100644[m
+[1m--- a/autossh/rootfs/usr/bin/autossh.sh[m
+[1m+++ b/autossh/rootfs/usr/bin/autossh.sh[m
+[36m@@ -3,6 +3,11 @@[m
+ # Home Assistant Community Add-on: Autossh[m
+ # Autossh implementation logic[m
+ # ==============================================================================[m
+[32m+[m
+[32m+[m[32m# Strict mode: fail on errors/unset vars[m
+[32m+[m[32m# with pipefail, autossh errors propagate through the pipe so the until-loop retries.[m
+[32m+[m[32mset -euo pipefail[m
+[32m+[m
+ declare SSH_KEY_PATH[m
+ declare SSH_KEY_NAME[m
+ declare HOSTNAME[m
+[36m@@ -18,7 +23,8 @@[m [mdeclare GATETIME[m
+ declare RETRY_INTERVAL[m
+ declare -a autossh_params[m
+ [m
+[31m-SSH_KEY_PATH=/data/ssh[m
+[32m+[m[32mKNOWN_HOSTS_PATH="/etc/ssh/ssh_known_hosts"[m
+[32m+[m[32mSSH_KEY_PATH="/data/ssh"[m
+ SSH_KEY_NAME=$(bashio::config 'ssh_key_name')[m
+ HOSTNAME=$(bashio::config 'hostname')[m
+ SSH_PORT=$(bashio::config 'ssh_port')[m
+[36m@@ -44,7 +50,7 @@[m [mfi[m
+ if [ ! -f "${SSH_KEY_PATH}/${SSH_KEY_NAME}" ]; then[m
+     bashio::log.info "Generating new private key"[m
+     mkdir -p "${SSH_KEY_PATH}"[m
+[31m-    ssh-keygen -b 4096 -t ED25519 -N "" -f "${SSH_KEY_PATH}/${SSH_KEY_NAME}"  [m
+[32m+[m[32m    ssh-keygen -t ed25519 -N "" -f "${SSH_KEY_PATH}/${SSH_KEY_NAME}"[m[41m  [m
+ fi[m
+ [m
+ bashio::log.info "Using existing keys from: '${SSH_KEY_PATH}'"[m
+[36m@@ -55,14 +61,16 @@[m [mcat "${SSH_KEY_PATH}/${SSH_KEY_NAME}.pub"[m
+ bashio::log.info "-----------------------------------------------------------"[m
+ [m
+ # add host key to global ssh config[m
+[31m-ssh-keyscan -p "$SSH_PORT" "$HOSTNAME" > "/etc/ssh/ssh_known_hosts"[m
+[32m+[m[32mtarget="[$HOSTNAME]:${SSH_PORT}"[m
+[32m+[m[32mssh-keygen -R "$target" -f "$KNOWN_HOSTS_PATH" >/dev/null 2>&1 || true[m
+[32m+[m[32mssh-keyscan -p "$SSH_PORT" "$HOSTNAME" >> "$KNOWN_HOSTS_PATH"[m
+ [m
+ # autossh params[m
+[31m-# https://www.harding.motd.ca/autossh/[m
+ # https://linux.die.net/man/1/autossh[m
+[32m+[m[32m# https://linux.die.net/man/1/ssh[m
+ autossh_params+=(-M "${MONITOR_PORT}")[m
+ autossh_params+=(-N)[m
+[31m-autossh_params+=(-q)[m
+[32m+[m[32mautossh_params+=(-T)[m
+ autossh_params+=(-o ExitOnForwardFailure=yes)[m
+ autossh_params+=(-o ServerAliveInterval="${SERVER_ALIVE_INTERVAL}")[m
+ autossh_params+=(-o ServerAliveCountMax="${SERVER_ALIVE_COUNT_MAX}")[m
+[36m@@ -87,9 +95,16 @@[m [mfi[m
+ # Enable debug mode on autossh[m
+ if bashio::debug; then[m
+     autossh_params+=(-v)[m
+[32m+[m[32melse[m
+[32m+[m[32m    autossh_params+=(-q)[m
+ fi[m
+ [m
+[31m-autossh_params+=("${OTHER_SSH_OPTIONS}")[m
+[32m+[m[32m# Extra user-provided options (split into tokens)[m
+[32m+[m[32mif [[ -n "${OTHER_SSH_OPTIONS}" ]]; then[m
+[32m+[m[32m    # shellcheck disable=SC2206[m
+[32m+[m[32m    extra_opts=( ${OTHER_SSH_OPTIONS} )[m
+[32m+[m[32m    autossh_params+=("${extra_opts[@]}")[m
+[32m+[m[32mfi[m
+ [m
+ bashio::log.info "Autossh start!"[m
+ bashio::log.debug "Executing autossh with params:"[m
